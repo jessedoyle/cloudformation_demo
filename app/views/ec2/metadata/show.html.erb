@@ -1,0 +1,18 @@
+<h1>Metadata: <%= @metadata.uri %></h1>
+<% if @metadata.data[:error].present? %>
+  <h2 style="color: red">Error: <%= @metadata.data[:error] %></h2>
+<% end %>
+<table>
+  <thead>
+    <th>Metadata Value</th>
+  </thead>
+  <tbody>
+    <% @metadata.data[:values].each do |data| %>
+      <tr>
+        <td>
+          <%= link_to(data.fetch(:text), ec2_metadata_fragment_path(data.fetch(:path))) %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
