@@ -135,470 +135,6 @@ Resources:
       Roles:
         - !Ref CodeDeployRole
     DependsOn: CodeDeployRole
-  EC2InstanceA:
-    Type: AWS::EC2::Instance
-    Metadata:
-      "AWS::CloudFormation::Init":
-        configSets:
-          provision:
-            - command_installs
-            - packages
-            - filesystem
-            - source_code
-            - application
-            - nginx
-            - service_status
-        command_installs:
-          commands:
-            "010_log":
-              command: 'echo "START: command_install..." > /home/ec2-user/init.log'
-            "020_yum_update":
-              command: yum update -y >> /home/ec2-user/init.log 2>&1
-            "025_node_install":
-              command: yum install nodejs npm -y --enablerepo=epel >> /home/ec2-user/init.log 2>&1
-            "030_dev_tools":
-              command: yum groupinstall "Development Tools" -y >> /home/ec2-user/init.log 2>&1
-            "040_rvm_gpg":
-              command: gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 7D2BAF1CF37B13E2069D6956105BD0E739499BDB >> /home/ec2-user/init.log 2>&1
-            "050_rvm_install":
-              command: \curl -sSL https://get.rvm.io | bash -s stable --ruby --gems=bundler >> /home/ec2-user/init.log 2>&1
-            "055_install_bundler":
-              command: gem install bundler >> /home/ec2-user/init.log 2>&1
-            "060_rvm_ownership":
-              command: mkdir -p /usr/local/rvm && chown ec2-user -R /usr/local/rvm >> /home/ec2-user/init.log 2>&1
-            "070_codedeploy_pull":
-              command: wget -O /home/ec2-user/codedeploy-install https://aws-codedeploy-us-west-2.s3.amazonaws.com/latest/install >> /home/ec2-user/init.log 2>&1
-            "080_codedeploy_mod":
-              command: chmod +x /home/ec2-user/codedeploy-install >> /home/ec2-user/init.log 2>&1
-            "090_codedeploy_install":
-              command: /home/ec2-user/codedeploy-install auto >> /home/ec2-user/init.log 2>&1
-            "100_codedeploy_clean":
-              command: rm /home/ec2-user/codedeploy-install >> /home/ec2-user/init.log 2>&1
-            "110_hosts_add":
-              command: echo "169.254.169.254 ec2.meta" >> /etc/hosts 2>&1
-        filesystem:
-          commands:
-            "010_log":
-              command: 'echo "START: filesystem..." >> /home/ec2-user/init.log'
-            "020_nginx_sites_enabled":
-              command: mkdir /etc/nginx/sites-enabled >> /home/ec2-user/init.log 2>&1
-            "030_nginx_sites_available":
-              command: mkdir /etc/nginx/sites-available >> /home/ec2-user/init.log 2>&1
-            "040_srv_directory":
-              command: mkdir -p '/srv' && chown -R ec2-user:ec2-user /srv >> /home/ec2-user/init.log 2>&1
-        source_code:
-          commands:
-            "010_log":
-              command: 'echo "START: source_code..." >> /home/ec2-user/init.log'
-            "020_tmp":
-              command: mkdir -p tmp/sockets >> /home/ec2-user/init.log 2>&1
-              cwd: /srv/cloudformation_demo
-          files:
-            "/srv/cloudformation_demo/config/master.key":
-              content: !Ref MasterKeyParameter
-              group: ec2-user
-              owner: ec2-user
-              mode: "000600"
-          sources:
-            "/srv/cloudformation_demo": https://github.com/jessedoyle/cloudformation_demo/tarball/master
-        application:
-          commands:
-            "010_log":
-              command: 'echo "START: application..." >> /home/ec2-user/init.log'
-            "020_bundle":
-              command: /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle install --path="vendor/bundle" --without development test install --path="vendor/bundle" --without development test >> /home/ec2-user/init.log 2>&1
-              cwd: "/srv/cloudformation_demo"
-            "030_assets":
-              command: /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec rake assets:precompile >> /home/ec2-user/init.log 2>&1
-              cwd: /srv/cloudformation_demo
-              env:
-                RAILS_ENV: production
-            "040_tmp":
-              command: mkdir -p tmp/pids >> /home/ec2-user/init.log 2>&1
-              cwd: /srv/cloudformation_demo
-            "050_chown":
-              command: chown -R ec2-user:ec2-user /srv/cloudformation_demo >> /home/ec2-user/init.log 2>&1
-              cwd: /srv/cloudformation_demo
-            "060_start_app":
-              command: start puma
-          files:
-            "/etc/init/puma.conf":
-              content: |
-                description "Puma Background Worker"
-                author "https://github.com/jessedoyle"
-                version "0.1.0"
-                start on startup
-                expect daemon
-
-                respawn
-                respawn limit 3 30
-                chdir /srv/cloudformation_demo
-                env RAILS_SERVE_STATIC_FILES=true
-                env RAILS_ENV=production
-                env BIND=unix:///srv/cloudformation_demo/tmp/sockets/puma.sock
-                env WORKERS=2
-                env STDOUT_PATH=/srv/cloudformation_demo/log/puma.stdout.log
-                env STDERR_PATH=/srv/cloudformation_demo/log/puma.stderr.log
-                env DAEMONIZE=true
-
-                script
-                  exec su -s /bin/sh -c 'exec "$0" "$@"' ec2-user -- /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec puma -C config/puma.rb
-                end script
-              group: root
-              owner: root
-              mode: "000644"
-        packages:
-          commands:
-            log:
-              command: 'echo "START: packages..." >> /home/ec2-user/init.log'
-          packages:
-            yum:
-              "gcc-c++": []
-              "patch": []
-              "readline": []
-              "readline-devel": []
-              "zlib": []
-              "zlib-devel": []
-              "libyaml-devel": []
-              "libffi-devel": []
-              "openssl-devel": []
-              "make": []
-              "bzip2": []
-              "autoconf": []
-              "automake": []
-              "libtool": []
-              "bison": []
-              "postgresql92": []
-              "postgresql92-devel": []
-              "nginx": []
-        nginx:
-          commands:
-            "010_log":
-              command: 'echo "START: nginx..." >> /home/ec2-user/init.log'
-            "020_symlink":
-              command: 'ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default'
-          files:
-            "/etc/nginx/nginx.conf":
-              content: |
-                user  nginx;
-                worker_processes  2;
-
-                error_log  /var/log/nginx/error.log;
-                pid   /var/run/nginx.pid;
-
-                events {
-                  worker_connections  1024;
-                }
-
-                http {
-                  include /etc/nginx/mime.types;
-                  gzip  on;
-                  gzip_http_version 1.1;
-                  gzip_comp_level 2;
-                  gzip_types text/plain text/html text/css
-                             application/x-javascript text/xml
-                             application/xml application/xml+rss
-                             text/javascript;
-
-                  include /etc/nginx/sites-enabled/*;
-                }
-              group: nginx
-              owner: nginx
-              mode: "000644"
-            "/etc/nginx/sites-available/default":
-              content: |
-                upstream app {
-                  server unix:///srv/cloudformation_demo/tmp/sockets/puma.sock fail_timeout=0;
-                }
-
-                server {
-                  listen 80;
-                  server_name localhost;
-
-                  root /srv/cloudformation_demo/public;
-                  try_files $uri/index.html $uri @app;
-
-                  location @app {
-                    proxy_pass http://app;
-                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                    proxy_set_header Host $http_host;
-                    proxy_redirect off;
-                  }
-                  error_page 500 502 503 504 /500.html;
-                  client_max_body_size 4G;
-                  keepalive_timeout 10;
-                }
-              group: nginx
-              owner: nginx
-              mode: "000644"
-        service_status:
-          commands:
-            log:
-              command: 'echo "START: service_status..." >> /home/ec2-user/init.log'
-          services:
-            sysvinit:
-              codedeploy-agent:
-                enabled: true
-                ensureRunning: true
-              nginx:
-                enabled: true
-                ensureRunning: true
-                files:
-                  - "/etc/nginx/nginx.conf"
-    Properties:
-      AvailabilityZone: us-west-2a
-      EbsOptimized: false
-      ImageId: ami-d874e0a0
-      InstanceInitiatedShutdownBehavior: terminate
-      InstanceType: t2.micro
-      IamInstanceProfile: !Ref EC2InstanceProfile
-      KeyName: jesse-aws
-      Monitoring: true
-      SecurityGroupIds:
-        - !Ref EC2SecurityGroup
-      SubnetId: !Ref SubnetA
-      UserData:
-        Fn::Base64: !Sub |
-          #!/usr/bin/env bash
-          touch /home/ec2-user/init.log
-          /opt/aws/bin/cfn-init -v -c provision --region ${AWS::Region} -s ${AWS::StackId} -r EC2InstanceA >> /home/ec2-user/init.log 2>&1
-    DependsOn:
-      - EC2SecurityGroup
-      - SubnetA
-      - GatewayAttachment
-      - EC2InstanceProfile
-  EC2InstanceB:
-    Type: AWS::EC2::Instance
-    Metadata:
-      "AWS::CloudFormation::Init":
-        configSets:
-          provision:
-            - command_installs
-            - packages
-            - filesystem
-            - source_code
-            - application
-            - nginx
-            - service_status
-        command_installs:
-          commands:
-            "010_log":
-              command: 'echo "START: command_install..." > /home/ec2-user/init.log'
-            "020_yum_update":
-              command: yum update -y >> /home/ec2-user/init.log 2>&1
-            "025_node_install":
-              command: yum install nodejs npm -y --enablerepo=epel >> /home/ec2-user/init.log 2>&1
-            "030_dev_tools":
-              command: yum groupinstall "Development Tools" -y >> /home/ec2-user/init.log 2>&1
-            "040_rvm_gpg":
-              command: gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 7D2BAF1CF37B13E2069D6956105BD0E739499BDB >> /home/ec2-user/init.log 2>&1
-            "050_rvm_install":
-              command: \curl -sSL https://get.rvm.io | bash -s stable --ruby --gems=bundler >> /home/ec2-user/init.log 2>&1
-            "055_install_bundler":
-              command: gem install bundler >> /home/ec2-user/init.log 2>&1
-            "060_rvm_ownership":
-              command: mkdir -p /usr/local/rvm && chown ec2-user -R /usr/local/rvm >> /home/ec2-user/init.log 2>&1
-            "070_codedeploy_pull":
-              command: wget -O /home/ec2-user/codedeploy-install https://aws-codedeploy-us-west-2.s3.amazonaws.com/latest/install >> /home/ec2-user/init.log 2>&1
-            "080_codedeploy_mod":
-              command: chmod +x /home/ec2-user/codedeploy-install >> /home/ec2-user/init.log 2>&1
-            "090_codedeploy_install":
-              command: /home/ec2-user/codedeploy-install auto >> /home/ec2-user/init.log 2>&1
-            "100_codedeploy_clean":
-              command: rm /home/ec2-user/codedeploy-install >> /home/ec2-user/init.log 2>&1
-            "110_hosts_add":
-              command: echo "169.254.169.254 ec2.meta" >> /etc/hosts 2>&1
-        filesystem:
-          commands:
-            "010_log":
-              command: 'echo "START: filesystem..." >> /home/ec2-user/init.log'
-            "020_nginx_sites_enabled":
-              command: mkdir /etc/nginx/sites-enabled >> /home/ec2-user/init.log 2>&1
-            "030_nginx_sites_available":
-              command: mkdir /etc/nginx/sites-available >> /home/ec2-user/init.log 2>&1
-            "040_srv_directory":
-              command: mkdir -p '/srv' && chown -R ec2-user:ec2-user /srv >> /home/ec2-user/init.log 2>&1
-        source_code:
-          commands:
-            "010_log":
-              command: 'echo "START: source_code..." >> /home/ec2-user/init.log'
-            "020_tmp":
-              command: mkdir -p tmp/sockets >> /home/ec2-user/init.log 2>&1
-              cwd: /srv/cloudformation_demo
-          files:
-            "/srv/cloudformation_demo/config/master.key":
-              content: !Ref MasterKeyParameter
-              group: ec2-user
-              owner: ec2-user
-              mode: "000600"
-          sources:
-            "/srv/cloudformation_demo": https://github.com/jessedoyle/cloudformation_demo/tarball/master
-        application:
-          commands:
-            "010_log":
-              command: 'echo "START: application..." >> /home/ec2-user/init.log'
-            "020_bundle":
-              command: /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle install --path="vendor/bundle" --without development test install --path="vendor/bundle" --without development test >> /home/ec2-user/init.log 2>&1
-              cwd: "/srv/cloudformation_demo"
-            "030_assets":
-              command: /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec rake assets:precompile >> /home/ec2-user/init.log 2>&1
-              cwd: /srv/cloudformation_demo
-              env:
-                RAILS_ENV: production
-            "040_tmp":
-              command: mkdir -p tmp/pids >> /home/ec2-user/init.log 2>&1
-              cwd: /srv/cloudformation_demo
-            "050_chown":
-              command: chown -R ec2-user:ec2-user /srv/cloudformation_demo >> /home/ec2-user/init.log 2>&1
-              cwd: /srv/cloudformation_demo
-            "060_start_app":
-              command: start puma
-          files:
-            "/etc/init/puma.conf":
-              content: |
-                description "Puma Background Worker"
-                author "https://github.com/jessedoyle"
-                version "0.1.0"
-                start on startup
-                expect daemon
-
-                respawn
-                respawn limit 3 30
-                chdir /srv/cloudformation_demo
-                env RAILS_SERVE_STATIC_FILES=true
-                env RAILS_ENV=production
-                env BIND=unix:///srv/cloudformation_demo/tmp/sockets/puma.sock
-                env WORKERS=2
-                env STDOUT_PATH=/srv/cloudformation_demo/log/puma.stdout.log
-                env STDERR_PATH=/srv/cloudformation_demo/log/puma.stderr.log
-                env DAEMONIZE=true
-
-                script
-                  exec su -s /bin/sh -c 'exec "$0" "$@"' ec2-user -- /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec puma -C config/puma.rb
-                end script
-              group: root
-              owner: root
-              mode: "000644"
-        packages:
-          commands:
-            log:
-              command: 'echo "START: packages..." >> /home/ec2-user/init.log'
-          packages:
-            yum:
-              "gcc-c++": []
-              "patch": []
-              "readline": []
-              "readline-devel": []
-              "zlib": []
-              "zlib-devel": []
-              "libyaml-devel": []
-              "libffi-devel": []
-              "openssl-devel": []
-              "make": []
-              "bzip2": []
-              "autoconf": []
-              "automake": []
-              "libtool": []
-              "bison": []
-              "postgresql92": []
-              "postgresql92-devel": []
-              "nginx": []
-        nginx:
-          commands:
-            "010_log":
-              command: 'echo "START: nginx..." >> /home/ec2-user/init.log'
-            "020_symlink":
-              command: 'ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default'
-          files:
-            "/etc/nginx/nginx.conf":
-              content: |
-                user  nginx;
-                worker_processes  2;
-
-                error_log  /var/log/nginx/error.log;
-                pid   /var/run/nginx.pid;
-
-                events {
-                  worker_connections  1024;
-                }
-
-                http {
-                  include /etc/nginx/mime.types;
-                  gzip  on;
-                  gzip_http_version 1.1;
-                  gzip_comp_level 2;
-                  gzip_types text/plain text/html text/css
-                             application/x-javascript text/xml
-                             application/xml application/xml+rss
-                             text/javascript;
-
-                  include /etc/nginx/sites-enabled/*;
-                }
-              group: nginx
-              owner: nginx
-              mode: "000644"
-            "/etc/nginx/sites-available/default":
-              content: |
-                upstream app {
-                  server unix:///srv/cloudformation_demo/tmp/sockets/puma.sock fail_timeout=0;
-                }
-
-                server {
-                  listen 80;
-                  server_name localhost;
-
-                  root /srv/cloudformation_demo/public;
-                  try_files $uri/index.html $uri @app;
-
-                  location @app {
-                    proxy_pass http://app;
-                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                    proxy_set_header Host $http_host;
-                    proxy_redirect off;
-                  }
-                  error_page 500 502 503 504 /500.html;
-                  client_max_body_size 4G;
-                  keepalive_timeout 10;
-                }
-              group: nginx
-              owner: nginx
-              mode: "000644"
-        service_status:
-          commands:
-            log:
-              command: 'echo "START: service_status..." >> /home/ec2-user/init.log'
-          services:
-            sysvinit:
-              codedeploy-agent:
-                enabled: true
-                ensureRunning: true
-              nginx:
-                enabled: true
-                ensureRunning: true
-                files:
-                  - "/etc/nginx/nginx.conf"
-    Properties:
-      AvailabilityZone: us-west-2b
-      EbsOptimized: false
-      ImageId: ami-d874e0a0
-      InstanceInitiatedShutdownBehavior: terminate
-      InstanceType: t2.micro
-      IamInstanceProfile: !Ref EC2InstanceProfile
-      KeyName: jesse-aws
-      Monitoring: true
-      SecurityGroupIds:
-        - !Ref EC2SecurityGroup
-      SubnetId: !Ref SubnetB
-      UserData:
-        Fn::Base64: !Sub |
-          #!/usr/bin/env bash
-          touch /home/ec2-user/init.log
-          /opt/aws/bin/cfn-init -c provision -v --region ${AWS::Region} -s ${AWS::StackId} -r EC2InstanceB >> /home/ec2-user/init.log 2>&1
-    DependsOn:
-      - EC2SecurityGroup
-      - SubnetB
-      - GatewayAttachment
-      - EC2InstanceProfile
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -613,6 +149,238 @@ Resources:
     DependsOn:
       - SubnetA
       - SubnetB
+  LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Metadata:
+      "AWS::CloudFormation::Init":
+        configSets:
+          provision:
+            - command_installs
+            - packages
+            - filesystem
+            - source_code
+            - application
+            - nginx
+            - service_status
+        command_installs:
+          commands:
+            "010_log":
+              command: 'echo "START: command_install..." > /home/ec2-user/init.log'
+            "020_yum_update":
+              command: yum update -y >> /home/ec2-user/init.log 2>&1
+            "025_node_install":
+              command: yum install nodejs npm -y --enablerepo=epel >> /home/ec2-user/init.log 2>&1
+            "030_dev_tools":
+              command: yum groupinstall "Development Tools" -y >> /home/ec2-user/init.log 2>&1
+            "040_rvm_gpg":
+              command: gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 7D2BAF1CF37B13E2069D6956105BD0E739499BDB >> /home/ec2-user/init.log 2>&1
+            "050_rvm_install":
+              command: \curl -sSL https://get.rvm.io | bash -s stable --ruby --gems=bundler >> /home/ec2-user/init.log 2>&1
+            "055_install_bundler":
+              command: gem install bundler >> /home/ec2-user/init.log 2>&1
+            "060_rvm_ownership":
+              command: mkdir -p /usr/local/rvm && chown ec2-user -R /usr/local/rvm >> /home/ec2-user/init.log 2>&1
+            "070_codedeploy_pull":
+              command: wget -O /home/ec2-user/codedeploy-install https://aws-codedeploy-us-west-2.s3.amazonaws.com/latest/install >> /home/ec2-user/init.log 2>&1
+            "080_codedeploy_mod":
+              command: chmod +x /home/ec2-user/codedeploy-install >> /home/ec2-user/init.log 2>&1
+            "090_codedeploy_install":
+              command: /home/ec2-user/codedeploy-install auto >> /home/ec2-user/init.log 2>&1
+            "100_codedeploy_clean":
+              command: rm /home/ec2-user/codedeploy-install >> /home/ec2-user/init.log 2>&1
+            "110_hosts_add":
+              command: echo "169.254.169.254 ec2.meta" >> /etc/hosts 2>&1
+        filesystem:
+          commands:
+            "010_log":
+              command: 'echo "START: filesystem..." >> /home/ec2-user/init.log'
+            "020_nginx_sites_enabled":
+              command: mkdir /etc/nginx/sites-enabled >> /home/ec2-user/init.log 2>&1
+            "030_nginx_sites_available":
+              command: mkdir /etc/nginx/sites-available >> /home/ec2-user/init.log 2>&1
+            "040_srv_directory":
+              command: mkdir -p '/srv' && chown -R ec2-user:ec2-user /srv >> /home/ec2-user/init.log 2>&1
+        source_code:
+          commands:
+            "010_log":
+              command: 'echo "START: source_code..." >> /home/ec2-user/init.log'
+            "020_tmp":
+              command: mkdir -p tmp/sockets >> /home/ec2-user/init.log 2>&1
+              cwd: /srv/cloudformation_demo
+          files:
+            "/srv/cloudformation_demo/config/master.key":
+              content: !Ref MasterKeyParameter
+              group: ec2-user
+              owner: ec2-user
+              mode: "000600"
+          sources:
+            "/srv/cloudformation_demo": https://github.com/jessedoyle/cloudformation_demo/tarball/master
+        application:
+          commands:
+            "010_log":
+              command: 'echo "START: application..." >> /home/ec2-user/init.log'
+            "020_bundle":
+              command: /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle install --path="vendor/bundle" --without development test install --path="vendor/bundle" --without development test >> /home/ec2-user/init.log 2>&1
+              cwd: "/srv/cloudformation_demo"
+            "030_assets":
+              command: /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec rake assets:precompile >> /home/ec2-user/init.log 2>&1
+              cwd: /srv/cloudformation_demo
+              env:
+                RAILS_ENV: production
+            "040_tmp":
+              command: mkdir -p tmp/pids >> /home/ec2-user/init.log 2>&1
+              cwd: /srv/cloudformation_demo
+            "050_chown":
+              command: chown -R ec2-user:ec2-user /srv/cloudformation_demo >> /home/ec2-user/init.log 2>&1
+              cwd: /srv/cloudformation_demo
+            "060_start_app":
+              command: start puma
+          files:
+            "/etc/init/puma.conf":
+              content: |
+                description "Puma Background Worker"
+                author "https://github.com/jessedoyle"
+                version "0.1.0"
+                start on startup
+                expect daemon
+
+                respawn
+                respawn limit 3 30
+                chdir /srv/cloudformation_demo
+                env RAILS_SERVE_STATIC_FILES=true
+                env RAILS_ENV=production
+                env BIND=unix:///srv/cloudformation_demo/tmp/sockets/puma.sock
+                env WORKERS=2
+                env STDOUT_PATH=/srv/cloudformation_demo/log/puma.stdout.log
+                env STDERR_PATH=/srv/cloudformation_demo/log/puma.stderr.log
+                env DAEMONIZE=true
+
+                script
+                  exec su -s /bin/sh -c 'exec "$0" "$@"' ec2-user -- /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec puma -C config/puma.rb
+                end script
+              group: root
+              owner: root
+              mode: "000644"
+        packages:
+          commands:
+            log:
+              command: 'echo "START: packages..." >> /home/ec2-user/init.log'
+          packages:
+            yum:
+              "gcc-c++": []
+              "patch": []
+              "readline": []
+              "readline-devel": []
+              "zlib": []
+              "zlib-devel": []
+              "libyaml-devel": []
+              "libffi-devel": []
+              "openssl-devel": []
+              "make": []
+              "bzip2": []
+              "autoconf": []
+              "automake": []
+              "libtool": []
+              "bison": []
+              "postgresql92": []
+              "postgresql92-devel": []
+              "nginx": []
+              "aws-cfn-bootstrap": []
+        nginx:
+          commands:
+            "010_log":
+              command: 'echo "START: nginx..." >> /home/ec2-user/init.log'
+            "020_symlink":
+              command: 'ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default'
+          files:
+            "/etc/nginx/nginx.conf":
+              content: |
+                user  nginx;
+                worker_processes  2;
+
+                error_log  /var/log/nginx/error.log;
+                pid   /var/run/nginx.pid;
+
+                events {
+                  worker_connections  1024;
+                }
+
+                http {
+                  include /etc/nginx/mime.types;
+                  gzip  on;
+                  gzip_http_version 1.1;
+                  gzip_comp_level 2;
+                  gzip_types text/plain text/html text/css
+                             application/x-javascript text/xml
+                             application/xml application/xml+rss
+                             text/javascript;
+
+                  include /etc/nginx/sites-enabled/*;
+                }
+              group: nginx
+              owner: nginx
+              mode: "000644"
+            "/etc/nginx/sites-available/default":
+              content: |
+                upstream app {
+                  server unix:///srv/cloudformation_demo/tmp/sockets/puma.sock fail_timeout=0;
+                }
+
+                server {
+                  listen 80;
+                  server_name localhost;
+
+                  root /srv/cloudformation_demo/public;
+                  try_files $uri/index.html $uri @app;
+
+                  location @app {
+                    proxy_pass http://app;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header Host $http_host;
+                    proxy_redirect off;
+                  }
+                  error_page 500 502 503 504 /500.html;
+                  client_max_body_size 4G;
+                  keepalive_timeout 10;
+                }
+              group: nginx
+              owner: nginx
+              mode: "000644"
+        service_status:
+          commands:
+            log:
+              command: 'echo "START: service_status..." >> /home/ec2-user/init.log'
+          services:
+            sysvinit:
+              codedeploy-agent:
+                enabled: true
+                ensureRunning: true
+              nginx:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - "/etc/nginx/nginx.conf"
+    Properties:
+      AssociatePublicIpAddress: true
+      EbsOptimized: false
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      ImageId: ami-d874e0a0
+      InstanceMonitoring: true
+      InstanceType: t2.micro
+      KeyName: jesse-aws
+      SecurityGroups:
+        - !Ref EC2SecurityGroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/usr/bin/env bash
+          touch /home/ec2-user/init.log
+          /opt/aws/bin/cfn-init -v -c provision --region ${AWS::Region} -s ${AWS::StackId} -r LaunchConfiguration >> /home/ec2-user/init.log 2>&1
+          /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackId} --resource AutoScalingGroup --region ${AWS::Region} >> /home/ec2-user/init.log 2>&1
+    DependsOn:
+      - EC2SecurityGroup
+      - LoadBalancer
+      - GatewayAttachment
+      - EC2InstanceProfile
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -625,15 +393,10 @@ Resources:
         HttpCode: 200
       Port: 80
       Protocol: HTTP
-      Targets:
-        - Id: !Ref EC2InstanceA
-        - Id: !Ref EC2InstanceB
       UnhealthyThresholdCount: 2
       VpcId: !Ref VPC
     DependsOn:
       - VPC
-      - EC2InstanceA
-      - EC2InstanceB
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -643,6 +406,45 @@ Resources:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
+    DependsOn:
+      - LoadBalancer
+      - TargetGroup
+      - AutoScalingGroup
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: 2
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingScheduledAction:
+        IgnoreUnmodifiedGroupSizeProperties: true
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 2
+        PauseTime: PT1M
+        WaitOnResourceSignals: true
+    Properties:
+      AvailabilityZones:
+        - us-west-2a
+        - us-west-2b
+      Cooldown: 120
+      DesiredCapacity: 2
+      HealthCheckGracePeriod: 420
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MaxSize: 4
+      MinSize: 2
+      TargetGroupARNs:
+        - !Ref TargetGroup
+      VPCZoneIdentifier:
+        - !Ref SubnetA
+        - !Ref SubnetB
+    DependsOn:
+      - SubnetA
+      - SubnetB
+      - TargetGroup
+      - LaunchConfiguration
   # TODO:
   # DatabaseSubnetGroup:
   #   Type: AWS::RDS::DBSubnetGroup
