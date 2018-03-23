@@ -1,6 +1,7 @@
 <h1>Metadata: <%= @metadata.uri %></h1>
+<h2 style="color: orange">Alias: <%= @instance.alias.value || 'Not Set' %></h2>
 <% if @metadata.data[:error].present? %>
-  <h2 style="color: red">Error: <%= @metadata.data[:error] %></h2>
+  <h3 style="color: red">Error: <%= @metadata.data[:error] %></h3>
 <% end %>
 <table>
   <thead>
@@ -16,3 +17,4 @@
     <% end %>
   </tbody>
 </table>
+<%= link_to 'Add Alias', new_alias_path %>

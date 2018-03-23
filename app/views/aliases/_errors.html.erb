@@ -1,0 +1,12 @@
+<div class="errors">
+  <% if model.errors.any? %>
+    <ul>
+      <% model.errors.each do |attribute, message| %>
+        <li style="color: red">
+          <strong><%= attribute %>:</strong>
+          <span><%= message %></span>
+        </li>
+      <% end %>
+    </ul>
+  <% end %>
+</div>

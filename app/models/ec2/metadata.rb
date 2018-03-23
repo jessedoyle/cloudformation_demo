@@ -15,7 +15,7 @@ module Ec2
         response = RestClient::Request.execute(
           method: 'GET',
           url: uri,
-          read_timeout: 5,
+          read_timeout: 1,
           open_timeout: 1,
           headers: {
             'Accept': 'text/plain'

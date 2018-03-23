@@ -149,6 +149,116 @@ Resources:
     DependsOn:
       - SubnetA
       - SubnetB
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 5
+      HealthCheckPath: /health_check
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 2
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: 200
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref VPC
+    DependsOn:
+      - VPC
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+    DependsOn:
+      - LoadBalancer
+      - TargetGroup
+      - AutoScalingGroup
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    CreationPolicy:
+      ResourceSignal:
+        Count: 2
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingScheduledAction:
+        IgnoreUnmodifiedGroupSizeProperties: true
+      AutoScalingRollingUpdate:
+        MinInstancesInService: 1
+        MaxBatchSize: 2
+        PauseTime: PT1M
+        WaitOnResourceSignals: true
+    Properties:
+      AvailabilityZones:
+        - us-west-2a
+        - us-west-2b
+      Cooldown: 120
+      DesiredCapacity: 2
+      HealthCheckGracePeriod: 420
+      HealthCheckType: ELB
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MaxSize: 4
+      MinSize: 2
+      TargetGroupARNs:
+        - !Ref TargetGroup
+      VPCZoneIdentifier:
+        - !Ref SubnetA
+        - !Ref SubnetB
+    DependsOn:
+      - SubnetA
+      - SubnetB
+      - TargetGroup
+      - LaunchConfiguration
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for Postgres Database
+      SubnetIds:
+        - !Ref SubnetA
+        - !Ref SubnetB
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Port 5432 to Postgres
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: !GetAtt [VPC, CidrBlock]
+    DependsOn:
+      - VPC
+      - SubnetA
+      - SubnetB
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      AllocatedStorage: 5
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      AvailabilityZone: us-west-2a
+      BackupRetentionPeriod: 0 # NOTE: no backup is faster to spin up
+      DBInstanceClass: db.t2.micro
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      Engine: postgres
+      EngineVersion: 10.1
+      MasterUsername: root
+      MasterUserPassword: !Ref DatabasePasswordParameter
+      MonitoringInterval: 0
+      Port: 5432
+      PubliclyAccessible: false
+      StorageEncrypted: false
+      StorageType: gp2
+      VPCSecurityGroups:
+        - !Ref DatabaseSecurityGroup
+    DependsOn:
+      - DatabaseSubnetGroup
+      - DatabaseSecurityGroup
   LaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Metadata:
@@ -233,7 +343,12 @@ Resources:
             "050_chown":
               command: chown -R ec2-user:ec2-user /srv/cloudformation_demo >> /home/ec2-user/init.log 2>&1
               cwd: /srv/cloudformation_demo
-            "060_start_app":
+            "060_database":
+              command: /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec rake db:migrate:status >> /home/ec2-user/init.log 2>&1 || (/usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec rake db:create >> /home/ec2-user/init.log 2>&1 && /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec rake db:migrate >> /home/ec2-user/init.log 2>&1)
+              cwd: /srv/cloudformation_demo
+              env:
+                RAILS_ENV: production
+            "070_start_app":
               command: start puma
           files:
             "/etc/init/puma.conf":
@@ -261,6 +376,17 @@ Resources:
               group: root
               owner: root
               mode: "000644"
+            "/srv/cloudformation_demo/.env":
+              content: !Sub |
+                RAILS_ENV=production
+                DB_HOST=${Database.Endpoint.Address}
+                DB_NAME=cloudformation_demo
+                DB_USER=root
+                DB_PASSWORD=${DatabasePasswordParameter}
+                PORT=${Database.Endpoint.Port}
+              group: ec2-user
+              owner: ec2-user
+              mode: "000400"
         packages:
           commands:
             log:
@@ -381,116 +507,8 @@ Resources:
       - LoadBalancer
       - GatewayAttachment
       - EC2InstanceProfile
-  TargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      HealthCheckIntervalSeconds: 5
-      HealthCheckPath: /health_check
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 2
-      HealthyThresholdCount: 2
-      Matcher:
-        HttpCode: 200
-      Port: 80
-      Protocol: HTTP
-      UnhealthyThresholdCount: 2
-      VpcId: !Ref VPC
-    DependsOn:
-      - VPC
-  LoadBalancerListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      DefaultActions:
-        - TargetGroupArn: !Ref TargetGroup
-          Type: forward
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 80
-      Protocol: HTTP
-    DependsOn:
-      - LoadBalancer
-      - TargetGroup
-      - AutoScalingGroup
-  AutoScalingGroup:
-    Type: AWS::AutoScaling::AutoScalingGroup
-    CreationPolicy:
-      ResourceSignal:
-        Count: 2
-        Timeout: PT15M
-    UpdatePolicy:
-      AutoScalingScheduledAction:
-        IgnoreUnmodifiedGroupSizeProperties: true
-      AutoScalingRollingUpdate:
-        MinInstancesInService: 1
-        MaxBatchSize: 2
-        PauseTime: PT1M
-        WaitOnResourceSignals: true
-    Properties:
-      AvailabilityZones:
-        - us-west-2a
-        - us-west-2b
-      Cooldown: 120
-      DesiredCapacity: 2
-      HealthCheckGracePeriod: 420
-      HealthCheckType: ELB
-      LaunchConfigurationName: !Ref LaunchConfiguration
-      MaxSize: 4
-      MinSize: 2
-      TargetGroupARNs:
-        - !Ref TargetGroup
-      VPCZoneIdentifier:
-        - !Ref SubnetA
-        - !Ref SubnetB
-    DependsOn:
-      - SubnetA
-      - SubnetB
-      - TargetGroup
-      - LaunchConfiguration
-  # TODO:
-  # DatabaseSubnetGroup:
-  #   Type: AWS::RDS::DBSubnetGroup
-  #   Properties:
-  #     DBSubnetGroupDescription: Subnet group for Postgres Database
-  #     SubnetIds:
-  #       - !Ref SubnetA
-  #       - !Ref SubnetB
-  # DatabaseSecurityGroup:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: Port 5432 to Postgres
-  #     VpcId: !Ref VPC
-  #     SecurityGroupIngress:
-  #       - IpProtocol: tcp
-  #         FromPort: 5432
-  #         ToPort: 5432
-  #         CidrIp: !Join [/, [!GetAtt [EC2InstanceA, PrivateIp], 32]]
-  #       - IpProtocol: tcp
-  #         FromPort: 5432
-  #         ToPort: 5432
-  #         CidrIp: !Join [/, [!GetAtt [EC2InstanceB, PrivateIp], 32]]
-  #   DependsOn:
-  #     - VPC
-  #     - EC2InstanceA
-  #     - EC2InstanceB
-  # Database:
-  #   Type: AWS::RDS::DBInstance
-  #   Properties:
-  #     AllocatedStorage: 10
-  #     AllowMajorVersionUpgrade: false
-  #     AutoMinorVersionUpgrade: true
-  #     AvailabilityZone: us-west-2a
-  #     DBInstanceClass: db.t2.micro
-  #     DBSubnetGroupName: !Ref DatabaseSubnetGroup
-  #     Engine: postgres
-  #     EngineVersion: 10.1
-  #     MasterUsername: root
-  #     MasterUserPassword: !Ref DatabasePasswordParameter
-  #     MonitoringInterval: 0
-  #     Port: 5432
-  #     PubliclyAccessible: false
-  #     StorageEncrypted: false
-  #     StorageType: gp2
-  #     VPCSecurityGroups:
-  #       - !Ref DatabaseSecurityGroup
-  #   DependsOn:
-  #     - DatabaseSubnetGroup
-  #     - DatabaseSecurityGroup
+      - Database
+Outputs:
+  ELBPath:
+    Description: DNS url of Elastic Load Balancer
+    Value: !GetAtt [LoadBalancer, DNSName]

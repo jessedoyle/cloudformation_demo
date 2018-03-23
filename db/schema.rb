@@ -10,9 +10,15 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 0) do
+ActiveRecord::Schema.define(version: 2018_03_23_012305) do
 
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
+
+  create_table "aliases", force: :cascade do |t|
+    t.string "instance_id"
+    t.string "value"
+    t.index ["instance_id"], name: "index_aliases_on_instance_id"
+  end
 
 end
