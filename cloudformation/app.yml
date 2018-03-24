@@ -129,6 +129,8 @@ Resources:
                 - codedeploy.amazonaws.com
             Action:
               - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
@@ -371,7 +373,7 @@ Resources:
                 env DAEMONIZE=true
 
                 script
-                  exec su -s /bin/sh -c 'exec "$0" "$@"' ec2-user -- /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec puma -C config/puma.rb
+                  exec su -s /bin/sh -c 'exec "$0" "$@"' ec2-user -- /usr/local/rvm/gems/ruby-2.4.1/wrappers/bundle exec pumactl -F config/puma.rb start
                 end script
               group: root
               owner: root

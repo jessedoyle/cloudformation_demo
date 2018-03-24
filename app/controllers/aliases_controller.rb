@@ -17,6 +17,19 @@ class AliasesController < ApplicationController
     end
   end
 
+  def update
+    @instance = Ec2::Instance.new
+    @alias = Alias.find(params[:id])
+    respond_to do |format|
+      if @alias.update(alias_params)
+        format.html { redirect_to ec2_metadata_path }
+      else
+        format.html { render :new }
+        format.js
+      end
+    end
+  end
+
   private
 
   def alias_params
