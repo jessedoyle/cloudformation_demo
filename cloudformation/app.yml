@@ -127,6 +127,7 @@ Resources:
             Principal:
               Service:
                 - codedeploy.amazonaws.com
+                - ec2.amazonaws.com
             Action:
               - sts:AssumeRole
       ManagedPolicyArns:
@@ -256,6 +257,7 @@ Resources:
       PubliclyAccessible: false
       StorageEncrypted: false
       StorageType: gp2
+      MultiAZ: false
       VPCSecurityGroups:
         - !Ref DatabaseSecurityGroup
     DependsOn:
