@@ -27,3 +27,11 @@
 /vendor/bundle
 /tmp
 logfile
+.terraform/*
+.env
+.env.*
+packer-manifest.json
+
+# TODO: setup remote state files
+*.tfstate
+*.tfstate.backup

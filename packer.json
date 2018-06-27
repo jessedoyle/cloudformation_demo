@@ -1,0 +1,89 @@
+{
+  "variables": {
+    "aws_access_key": "",
+    "aws_secret_key": "",
+    "aws_profile": "",
+    "aws_vpc_id": "",
+    "aws_subnet_id": "",
+    "aws_instance_type": "t2.micro"
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "profile": "{{user `aws_profile`}}",
+      "access_key": "{{user `aws_access_key`}}",
+      "secret_key": "{{user `aws_secret_key`}}",
+      "vpc_id": "{{user `aws_vpc_id`}}",
+      "subnet_id": "{{user `aws_subnet_id`}}",
+      "associate_public_ip_address": true,
+      "region": "us-west-2",
+      "source_ami_filter": {
+        "filters": {
+          "virtualization-type": "hvm",
+          "name": "amzn-ami-hvm-*",
+          "root-device-type": "ebs"
+        },
+        "owners": [
+          "137112412989"
+        ],
+        "most_recent": true
+      },
+      "instance_type": "{{user `aws_instance_type`}}",
+      "ssh_username": "ec2-user",
+      "ami_name": "cloudformation-demo-{{timestamp}}"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "./templates/puma.conf",
+      "destination": "~/puma.conf",
+      "direction": "upload"
+    },
+    {
+      "type": "file",
+      "source": "./.env.production",
+      "destination": "~/.env.production",
+      "direction": "upload"
+    },
+    {
+      "type": "file",
+      "source": "./config/master.key",
+      "destination": "~/master.key",
+      "direction": "upload"
+    },
+    {
+      "type": "file",
+      "source": "./templates/nginx.conf",
+      "destination": "~/nginx.conf",
+      "direction": "upload"
+    },
+    {
+      "type": "file",
+      "source": "./templates/sites-available/default",
+      "destination": "~/default",
+      "direction": "upload"
+    },
+    {
+      "type": "shell",
+      "script": "./script/provision.sh",
+      "execute_command": "chmod +x {{ .Path }}; {{ .Vars }} sudo {{ .Path }}",
+      "environment_vars": [
+        "RAILS_ENV=production"
+      ]
+    }
+  ],
+  "post-processors": [
+    {
+      "type": "manifest",
+      "output": "packer-manifest.json",
+      "strip_path": true
+    },
+    {
+      "type": "shell-local",
+      "inline": [
+        "terraform apply -auto-approve"
+      ]
+    }
+  ]
+}
