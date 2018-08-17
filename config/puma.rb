@@ -25,7 +25,7 @@ if STDOUT_PATH
 end
 
 if WORKERS
-  prune_bundler
+  preload_app!
   workers(WORKERS)
   worker_timeout(60)
   worker_boot_timeout(60)
