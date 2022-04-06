@@ -6,7 +6,6 @@ MIN_THREADS = ENV.fetch('RAILS_MIN_THREADS') { MAX_THREADS }.freeze
 STATEFILE   = ENV.fetch('STATEFILE') { File.join(APP_DIR, 'tmp', 'pids', 'puma.state') }.freeze
 PIDFILE     = ENV.fetch('PIDFILE') { File.join(APP_DIR, 'tmp', 'pids', 'puma.pid') }.freeze
 BIND        = ENV.fetch('BIND') { 'tcp://0.0.0.0:3000' }.freeze
-DAEMONIZE   = ENV.fetch('DAEMONIZE') { false }.freeze
 WORKERS     = ENV['WORKERS'].freeze
 STDOUT_PATH = ENV['STDOUT_PATH'].freeze
 STDERR_PATH = ENV['STDERR_PATH'].freeze
@@ -17,8 +16,6 @@ environment(ENVIRONMENT)
 bind(BIND)
 tag(APP_NAME)
 state_path(STATEFILE)
-daemonize(!!DAEMONIZE)
-
 if STDOUT_PATH
   stderr_path = STDERR_PATH || STDOUT_PATH
   stdout_redirect(STDOUT_PATH, stderr_path, true)
